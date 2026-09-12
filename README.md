@@ -58,10 +58,10 @@ nmap <A-k> <Plug>(ResizeUp)
 nmap <A-l> <Plug>(ResizeRight)
 
 " Example: Conquer half a screen with Ctrl
-nmap <C-a> <Plug>(ConquerLeft)
-nmap <C-d> <Plug>(ConquerDown)
-nmap <C-s> <Plug>(ConquerUp)
-nmap <C-f> <Plug>(ConquerRight)
+nmap <C-h> <Plug>(ConquerLeft)
+nmap <C-j> <Plug>(ConquerDown)
+nmap <C-k> <Plug>(ConquerUp)
+nmap <C-l> <Plug>(ConquerRight)
 ```
 or
 
@@ -77,8 +77,8 @@ map('n', '<A-k>', '<Plug>(ResizeUp)')
 map('n', '<A-l>', '<Plug>(ResizeRight)')
 
 -- Example: Conquer half a screen with Ctrl
-map('n', '<C-a>', '<Plug>(ConquerLeft)')
-map('n', '<C-d>', '<Plug>(ConquerDown)')
-map('n', '<C-s>', '<Plug>(ConquerUp)')
-map('n', '<C-f>', '<Plug>(ConquerRight)')
+map('n', '<C-h>', '<Plug>(ConquerLeft)')
+map('n', '<C-j>', '<Plug>(ConquerDown)')
+map('n', '<C-k>', '<Plug>(ConquerUp)')
+map('n', '<C-l>', '<Plug>(ConquerRight)')
 ```
