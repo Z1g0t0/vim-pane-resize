@@ -1,10 +1,9 @@
-if exists('g:pane_resize')
-	finish
+if exists('g:resize_enter_mapped') && !empty(g:resize_enter_mapped)
+	silent! execute 'nunmap' g:resize_enter_mapped
 endif
-let g:pane_resize = 1
 
-" ── User configuration ────────────────────────────────────────────────
-let g:resize_enter = get(g:, 'resize_enter', '<C-r>')
+let g:pane_resize = 1
+let g:resize_enter  = get(g:, 'resize_enter',  '<C-r>')
 let g:resize_width  = get(g:, 'resize_width',  1)
 let g:resize_height = get(g:, 'resize_height', 1)
 let g:resize_leave  = get(g:, 'resize_leave',  1)
@@ -28,11 +27,8 @@ let s:default_keys = {
 	\ 'confirm'       : '<CR>',
 	\ 'cancel'        : '<Esc>',
 	\ }
-let g:resize_keys = extend(copy(s:default_keys), get(g:, 'resize_keys', {}))
 
 " ── Key translation ───────────────────────────────────────────────────
-" getchar() returns a Number for single-byte keys and a String for
-" special keys. Dictionary keys are always strings, so we stringify.
 function! s:Key2Char(key) abort
 	if type(a:key) == type(0)
 		return string(a:key)
@@ -56,8 +52,9 @@ function! s:Key2Char(key) abort
 endfunction
 
 function! s:BuildKeymap() abort
+	let keys = extend(copy(s:default_keys), get(g:, 'resize_keys', {}))
 	let s:keymap = {}
-	for [action, key] in items(g:resize_keys)
+	for [action, key] in items(keys)
 		let s:keymap[s:Key2Char(key)] = action
 	endfor
 endfunction
@@ -69,19 +66,29 @@ function! s:CharKey(c) abort
 endfunction
 
 " ── Layout snapshot ───────────────────────────────────────────────────
-" winrestcmd() only restores SIZES of the current layout. Conquer (wincmd
-" H/J/K/L) and split change the layout *tree*, so we also keep a session
-" of the current tab and use it whenever the tree changed.
 function! s:SaveSession() abort
 	let tmp = tempname() . '.vim'
 	let save = &sessionoptions
 	try
-		set sessionoptions=blank,buffers,help,winsize",resize
+		set sessionoptions=blank,buffers,help,winsize,resize
 		execute 'mksession!' fnameescape(tmp)
 	finally
 		let &sessionoptions = save
 	endtry
 	return tmp
+endfunction
+
+function! s:RefreshHighlight() abort
+	" Session source with eventignore skips FileType/Syntax autocommands.
+	if exists('g:syntax_on') && g:syntax_on
+		silent! syntax enable
+	endif
+	let cur = win_getid()
+	for w in range(1, winnr('$'))
+		let id = win_getid(w)
+		call win_execute(id, 'if !empty(&filetype) | silent! doautocmd <nomodeline> FileType | endif')
+	endfor
+	call win_gotoid(cur)
 endfunction
 
 function! s:RestoreSession(file) abort
@@ -99,44 +106,51 @@ function! s:RestoreSession(file) abort
 		let &eventignore = ei
 		call delete(a:file)
 	endtry
+	call s:RefreshHighlight()
 endfunction
 
 function! s:LayoutSig() abort
 	return string(winlayout())
 endfunction
 
-" ── Incremental resize (edge-aware so j/k h/l feel consistent) ────────
-function! s:IsEdge(dir) abort
-	let cur = winnr()
-	noautocmd execute 'wincmd' a:dir
-	let edge = (cur == winnr())
-	if !edge
-		noautocmd execute cur 'wincmd w'
+" Keep the command-line from being eaten by a greedy :resize.
+function! s:FixCmdline(cmdheight) abort
+	if &cmdheight != a:cmdheight
+		let &cmdheight = a:cmdheight
 	endif
-	return edge
 endfunction
 
-function! s:Resize(dir, amount) abort
-	let actions = {
-		\ 'h': 'vertical resize -',
-		\ 'j': 'resize +',
-		\ 'k': 'resize -',
-		\ 'l': 'vertical resize +'
-		\ }
-	let opposites = {'h': 'l', 'j': 'k', 'k': 'j', 'l': 'h'}
-	if (a:dir ==# 'j' || a:dir ==# 'l') && s:IsEdge(a:dir)
-		let opp = opposites[a:dir]
-		let cur = winnr()
-		noautocmd execute 'wincmd' opp
-		execute actions[a:dir] . a:amount
-		noautocmd execute cur 'wincmd w'
-	elseif (a:dir ==# 'h' || a:dir ==# 'k') && s:IsEdge(opposites[a:dir])
-		let cur = winnr()
-		noautocmd execute 'wincmd' a:dir
-		execute actions[a:dir] . a:amount
-		noautocmd execute cur 'wincmd w'
+function! s:UsableHeight() abort
+	let tab = 0
+	if &showtabline == 2 || (&showtabline == 1 && tabpagenr('$') > 1)
+		let tab = 1
+	endif
+	let stl = (&laststatus == 0) ? 0 : 1
+	return max([1, &lines - &cmdheight - stl - tab])
+endfunction
+
+" ── Incremental resize ────────────────────────────────────────────────
+" ALWAYS resize the current window. Never wincmd to a neighbour — that is
+" what made a different pane change size.
+"   H = narrower   L = wider   J = taller   K = shorter
+function! s:IncResize(dir, amount) abort
+	if a:dir ==# 'h'
+		execute 'vertical resize -' . a:amount
+	elseif a:dir ==# 'l'
+		execute 'vertical resize +' . a:amount
+	elseif a:dir ==# 'j'
+		execute 'resize +' . a:amount
+	elseif a:dir ==# 'k'
+		execute 'resize -' . a:amount
+	endif
+endfunction
+
+" Back-compat: old maps called <SID>Resize() with 0 args, or (dir, amount).
+function! s:Resize(...) abort
+	if a:0 >= 2
+		call s:IncResize(a:1, a:2)
 	else
-		execute actions[a:dir] . a:amount
+		call s:Main()
 	endif
 endfunction
 
@@ -146,14 +160,9 @@ function! s:Conquer(dir) abort
 	endif
 	execute 'wincmd' a:dir
 	if a:dir ==# 'H' || a:dir ==# 'L'
-		let target = max([1, &columns / 2])
-		execute 'vertical resize' target
+		execute 'vertical resize' max([1, &columns / 2])
 	else
-		let usable = &lines - &cmdheight
-					\ - (&laststatus ? 1 : 0)
-					\ - (&showtabline ? 1 : 0)
-		let target = max([1, usable / 2])
-		execute 'resize' target
+		execute 'resize' max([1, s:UsableHeight() / 2])
 	endif
 endfunction
 
@@ -171,12 +180,17 @@ function! s:Main() abort
 	let l:restore_win = win_getid()
 	let l:session     = s:SaveSession()
 	let l:hlsearch    = &hlsearch
+	let l:cmdheight   = max([1, &cmdheight])
+	let l:ea          = &equalalways
+
 	set nohlsearch
+	set noequalalways
 
 	while 1
+		call s:FixCmdline(l:cmdheight)
 		redraw!
 		echohl ModeMsg
-		echo '<-RESIZE-MODE-ON-> : [Enter/Esc] '
+		echo ' <-RESIZE-MODE-> [Enter/Esc] '
 		echohl None
 
 		let c = getchar()
@@ -185,7 +199,7 @@ function! s:Main() abort
 		if action ==# 'confirm'
 			break
 
-		elseif (action ==# 'cancel' && g:resize_leave)
+		elseif action ==# 'cancel'
 			if s:LayoutSig() ==# l:restore_sig
 				execute l:restore_cmd
 				call win_gotoid(l:restore_win)
@@ -196,13 +210,13 @@ function! s:Main() abort
 			break
 
 		elseif action ==# 'inc_left'
-			call s:Resize('h', g:resize_width)
+			call s:IncResize('h', g:resize_width)
 		elseif action ==# 'inc_right'
-			call s:Resize('l', g:resize_width)
+			call s:IncResize('l', g:resize_width)
 		elseif action ==# 'inc_down'
-			call s:Resize('j', g:resize_height)
+			call s:IncResize('j', g:resize_height)
 		elseif action ==# 'inc_up'
-			call s:Resize('k', g:resize_height)
+			call s:IncResize('k', g:resize_height)
 
 		elseif action ==# 'conquer_left'
 			call s:Conquer('H')
@@ -236,12 +250,25 @@ function! s:Main() abort
 		call delete(l:session)
 	endif
 	let &hlsearch = l:hlsearch
+	let &equalalways = l:ea
+	call s:FixCmdline(l:cmdheight)
 	redraw!
 	echo ''
 	echon "\r"
 endfunction
 
-if !empty(g:resize_enter)
-	execute 'nnoremap <silent>' g:resize_enter ':call <SID>Main()<CR>'
-endif
+function! PaneResize() abort
+	call s:Main()
+endfunction
+
+silent! delcommand PaneResize
+silent! delcommand Resize
 command! -bar PaneResize call s:Main()
+command! -bar Resize call s:Main()
+
+nnoremap <silent> <Plug>(PaneResize) :PaneResize<CR>
+
+if !empty(g:resize_enter)
+	execute 'nmap <silent>' g:resize_enter '<Plug>(PaneResize)'
+	let g:resize_enter_mapped = g:resize_enter
+endif
