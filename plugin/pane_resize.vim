@@ -28,9 +28,10 @@ function! s:Resize() abort
 		" Force a clean redraw *before* showing the message.
 		" This prevents the cmdline from accumulating lines and
 		" clears border artifacts from the previous resize.
-		redraw
+		redraw!
+		"redraw
 		echohl ModeMsg
-		echo '[Resize]'
+		echo '[<-RESIZE-MODE-ON->]'
 		echohl None
 
 		let c = getchar()
@@ -66,6 +67,8 @@ function! s:Resize() abort
 
 	" Clean exit: restore hlsearch and clear the mode message
 	let &hlsearch = l:hlsearch
-	redraw
+	redraw!
+	"redraw
 	echo ''
+	echon "\r"
 endfunction
