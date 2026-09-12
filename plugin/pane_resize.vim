@@ -42,11 +42,21 @@ function! s:Conquer(dir) abort
     if winnr('$') == 1
         return
     endif
+    
+    " Move window to edge first
     noautocmd exec 'wincmd ' . a:dir
+    
+    " Adjust sizing safely based on orientation
     if a:dir ==# 'H' || a:dir ==# 'L'
-        exec 'vertical resize ' . (&columns / 2)
+        let target = (&columns / 2)
+        if target > 0
+            exec 'vertical resize ' . target
+        endif
     elseif a:dir ==# 'J' || a:dir ==# 'K'
-        exec 'resize ' . (&lines / 2)
+        let target = (&lines / 2)
+        if target > 0
+            exec 'resize ' . target
+        endif
     endif
 endfunction
 
