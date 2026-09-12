@@ -76,7 +76,7 @@ function! s:SaveSession() abort
 	let tmp = tempname() . '.vim'
 	let save = &sessionoptions
 	try
-		set sessionoptions=blank,buffers,help,winsize,resize
+		set sessionoptions=blank,buffers,help,winsize",resize
 		execute 'mksession!' fnameescape(tmp)
 	finally
 		let &sessionoptions = save
