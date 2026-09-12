@@ -308,12 +308,20 @@ function! s:ChangeWidth(delta) abort
 	let left  = s:WinLeft()
 	let right = s:WinRight()
 
+	" On a left-edge pane the only movable bar is the right one.
+	" Flip need so H/L still travel in their named direction:
+	"   H (left) → right bar moves left  → shrinks
+	"   L (right) → right bar moves right → widens
+	if !left && right
+		let need = -need
+	endif
+
 	" [window-that-owns-the-bar, offset-sign relative to `need`]
 	" Left bar: moving it left (negative) grows us.
 	" Right bar: moving it right (positive) grows us.
 	let tries = []
-	if left  | call add(tries, [left,  1]) | endif
-	if right | call add(tries, [cur, -1])  | endif
+	if left  | call add(tries, [left, -1]) | endif
+	if right | call add(tries, [cur,  1])  | endif
 
 	call s:TryMove(tries, need, 1)
 endfunction
@@ -340,8 +348,8 @@ function! s:ChangeHeight(delta) abort
 	" Bottom bar: moving it down (positive) grows us.
 	" Top bar:    moving it up   (negative) grows us.
 	let tries = []
-	if below | call add(tries, [cur,  1]) | endif
-	if above | call add(tries, [cur, -1]) | endif
+	if below | call add(tries, [cur,   1]) | endif
+	if above | call add(tries, [above, -1]) | endif
 
 	call s:TryMove(tries, need, 0)
 endfunction
