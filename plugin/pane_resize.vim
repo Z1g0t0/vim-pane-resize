@@ -344,6 +344,10 @@ function! s:ChangeHeight(delta) abort
 	let cur   = winnr()
 	let below = s:WinBelow()
 	let above = s:WinAbove()
+	
+	if !below && above
+		let need = -need
+	endif
 
 	" Bottom bar: moving it down (positive) grows us.
 	" Top bar:    moving it up   (negative) grows us.
@@ -437,14 +441,15 @@ function! s:Main() abort
 
 	call s:BuildKeymap()
 
-	let l:restore_cmd = winrestcmd()
-	let l:restore_sig = s:LayoutSig()
-	let l:restore_win = win_getid()
-	let l:session     = s:SaveSession()
-	let l:hlsearch    = &hlsearch
-	let l:cmdheight   = max([1, &cmdheight])
-	let l:ea          = &equalalways
-	let l:prompt      = get(g:, 'resize_prompt', '<-RESIZE-MODE-> : [Enter/Esc] ')
+	let l:restore_cmd 	= winrestcmd()
+	let l:restore_sig 	= s:LayoutSig()
+	let l:restore_win 	= win_getid()
+	let l:session     	= s:SaveSession()
+	let l:hlsearch    	= &hlsearch
+	let l:cmdheight   	= max([1, &cmdheight])
+	let l:ea          	= &equalalways
+	let l:confirmed 	= 0
+	let l:prompt      	= get(g:, 'resize_prompt', '<-RESIZE-MODE-> : [Enter] : [Esc] ')
 
 	set nohlsearch
 	set noequalalways
@@ -460,6 +465,7 @@ function! s:Main() abort
 		let action = get(s:keymap, s:CharKey(c), '')
 
 		if action ==# 'confirm'
+			let l:confirmed = 1
 			break
 
 		elseif action ==# 'cancel'
@@ -508,12 +514,17 @@ function! s:Main() abort
 			vsplit
 		endif
 	endwhile
+	
+	let l:final_restore = l:confirmed ? winrestcmd() : ''
 
 	if !empty(l:session) && filereadable(l:session)
 		call delete(l:session)
 	endif
 	let &hlsearch = l:hlsearch
 	let &equalalways = l:ea
+	if !empty(l:final_restore)
+    	execute l:final_restore
+	endif
 	call s:FixCmdline(l:cmdheight)
 	redraw!
 	echo ''
