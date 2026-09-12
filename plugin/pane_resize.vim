@@ -14,6 +14,31 @@ if !empty(g:resize_enter)
 endif
 command! Resize call s:Resize()
 
+" ── helper: conquer (move to edge + take half the screen) ──────────────
+function! s:Conquer(dir) abort
+	" dir is 'H', 'J', 'K' or 'L'
+	if winnr('$') == 1
+		return
+	endif
+
+	" Move current window to the requested edge
+	execute 'wincmd' a:dir
+
+	if a:dir ==# 'H' || a:dir ==# 'L'
+		" half of the full width
+		let target = max([1, &columns / 2])
+		execute 'vertical resize' target
+	else
+		" half of the *usable* height (exclude cmdheight + status/tab line)
+		let usable = &lines - &cmdheight
+					\ - (&laststatus  ? 1 : 0)
+					\ - (&showtabline ? 1 : 0)
+		let target = max([1, usable / 2])
+		execute 'resize' target
+	endif
+endfunction
+
+" ── main modal loop ────────────────────────────────────────────────────
 function! s:Resize() abort
 	if winnr('$') == 1
 		echo 'Only one window – nothing to resize'
@@ -25,50 +50,64 @@ function! s:Resize() abort
 	set nohlsearch
 
 	while 1
-		" Force a clean redraw *before* showing the message.
-		" This prevents the cmdline from accumulating lines and
-		" clears border artifacts from the previous resize.
 		redraw!
-		"redraw
 		echohl ModeMsg
 		echo '[<-RESIZE-MODE-ON->]'
 		echohl None
 
 		let c = getchar()
 
-		" Keep current sizes
-		if c == 13                          " <CR>
+		" ── finish / cancel ────────────────────────────────────────
+		if c == 13                                          " <CR> = keep
 			break
-
-		" Restore original layout
-		elseif c == 113 || (g:resize_leave && c == 27)   " q or Esc
+		elseif c == 113 || (g:resize_leave && c == 27)      " q or Esc = restore
 			execute l:restore
 			break
 
-		" Resize current window
-		elseif c == 104                     " h
+		" ── incremental resize ─────────────────────────────────────
+		elseif c == 104                                     " h
 			execute 'vertical resize -' . g:resize_width
-		elseif c == 108                     " l
+		elseif c == 108                                     " l
 			execute 'vertical resize +' . g:resize_width
-		elseif c == 106                     " j
+		elseif c == 106                                     " j
 			execute 'resize +' . g:resize_height
-		elseif c == 107                     " k
+		elseif c == 107                                     " k
 			execute 'resize -' . g:resize_height
 
-		" Convenience
-		elseif c == 61                      " =
+		" ── conquer (half screen) ──────────────────────────────────
+		elseif c == 72                                      " H
+			call s:Conquer('H')
+		elseif c == 74                                      " J
+			call s:Conquer('J')
+		elseif c == 75                                      " K
+			call s:Conquer('K')
+		elseif c == 76                                      " L
+			call s:Conquer('L')
+
+		" ── change focus (Ctrl-hjkl) ───────────────────────────────
+		" Numeric values that getchar() returns for Ctrl-h/j/k/l
+		elseif c == 8                                       " <C-h>
+			wincmd h
+		elseif c == 10                                      " <C-j>
+			wincmd j
+		elseif c == 11                                      " <C-k>
+			wincmd k
+		elseif c == 12                                      " <C-l>
+			wincmd l
+
+		" ── extras ─────────────────────────────────────────────────
+		elseif c == 61                                      " =
 			wincmd =
-		elseif c == 95                      " _
+		elseif c == 95                                      " _
 			wincmd _
-		elseif c == 124                     " |
+		elseif c == 124                                     " |
 			wincmd |
 		endif
 	endwhile
 
-	" Clean exit: restore hlsearch and clear the mode message
+	" clean exit – prevents “Press ENTER to continue”
 	let &hlsearch = l:hlsearch
 	redraw!
-	"redraw
 	echo ''
 	echon "\r"
 endfunction
