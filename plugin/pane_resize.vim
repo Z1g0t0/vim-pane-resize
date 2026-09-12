@@ -4,9 +4,9 @@ endif
 let g:pane_resize = 1
 
 " Configurable keys (change these in your vimrc if you want)
-let g:resize_enter 	= get(g:, 'resize_enter',	'<C-e>')
-let g:resize_width 	= get(g:, 'resize_width',	5)   	" columns
-let g:resize_height = get(g:, 'resize_height',	2)		" lines
+let g:resize_enter 	= get(g:, 'resize_enter',	'<C-r>')
+let g:resize_width 	= get(g:, 'resize_width',	1)   	" columns
+let g:resize_height = get(g:, 'resize_height',	1)		" lines
 let g:resize_leave 	= get(g:, 'resize_leave',  	1)   	" 1 = Esc also finishes
 
 " Start mapping
@@ -27,7 +27,7 @@ function! s:Resize() abort
 	let l:hlsearch = &hlsearch
 	set nohlsearch
 
-	echo '[resize mode]  h/j/k/l = resize   = = equalise   Enter = keep   q/Esc = cancel'
+	echo '[Resize Mode]'
 
 	while 1
 		let c = getchar()
@@ -62,7 +62,7 @@ function! s:Resize() abort
 		endif
 
 		" Re-echo the prompt so the message stays visible
-		echo '[resize mode]  h/j/k/l = resize   = = equalise   Enter = keep   q/Esc = cancel'
+		echo '[Resize Mode]'
 	endwhile
 
 	let &hlsearch = l:hlsearch
