@@ -3,17 +3,15 @@ if exists('g:pane_resize')
 endif
 let g:pane_resize = 1
 
-" Configurable keys (change these in your vimrc if you want)
-let g:resize_enter 	= get(g:, 'resize_enter',	'<C-r>')
-let g:resize_width 	= get(g:, 'resize_width',	1)   	" columns
-let g:resize_height = get(g:, 'resize_height',	1)		" lines
-let g:resize_leave 	= get(g:, 'resize_leave',  	1)   	" 1 = Esc also finishes
+" Configurable
+let g:resize_enter  = get(g:, 'resize_enter',  '<C-r>')
+let g:resize_width  = get(g:, 'resize_width',  1)   " columns
+let g:resize_height = get(g:, 'resize_height', 1)   " lines
+let g:resize_leave  = get(g:, 'resize_leave',  1)   " 1 = Esc cancels
 
-" Start mapping
 if !empty(g:resize_enter)
 	execute 'nnoremap' g:resize_enter ':call <SID>Resize()<CR>'
 endif
-
 command! Resize call s:Resize()
 
 function! s:Resize() abort
@@ -22,49 +20,52 @@ function! s:Resize() abort
 		return
 	endif
 
-	" Capture the exact restore command *now*
-	let l:restore = winrestcmd()
+	let l:restore  = winrestcmd()
 	let l:hlsearch = &hlsearch
 	set nohlsearch
 
-	echo '[Resize Mode]'
-
 	while 1
+		" Force a clean redraw *before* showing the message.
+		" This prevents the cmdline from accumulating lines and
+		" clears border artifacts from the previous resize.
+		redraw
+		echohl ModeMsg
+		echo '[Resize]'
+		echohl None
+
 		let c = getchar()
 
-		" Finish (keep current sizes)
-		if c == 13                                   " <CR>
+		" Keep current sizes
+		if c == 13                          " <CR>
 			break
 
-		" Cancel (restore original layout)
-		elseif c == 113                              " q
-					\ || (g:resize_leave && c == 27)  " Esc
+		" Restore original layout
+		elseif c == 113 || (g:resize_leave && c == 27)   " q or Esc
 			execute l:restore
 			break
 
-		" Resize
-		elseif c == 104                              " h
+		" Resize current window
+		elseif c == 104                     " h
 			execute 'vertical resize -' . g:resize_width
-		elseif c == 108                              " l
+		elseif c == 108                     " l
 			execute 'vertical resize +' . g:resize_width
-		elseif c == 106                              " j
+		elseif c == 106                     " j
 			execute 'resize +' . g:resize_height
-		elseif c == 107                              " k
+		elseif c == 107                     " k
 			execute 'resize -' . g:resize_height
 
-		" Optional extras
-		elseif c == 61                               " =
+		" Convenience
+		elseif c == 61                      " =
 			wincmd =
-		elseif c == 95                               " _
+		elseif c == 95                      " _
 			wincmd _
-		elseif c == 124                              " |
+		elseif c == 124                     " |
 			wincmd |
 		endif
-
-		" Re-echo the prompt so the message stays visible
-		echo '[Resize Mode]'
 	endwhile
 
+	" Clean exit: restore hlsearch and clear the mode message
 	let &hlsearch = l:hlsearch
+	redraw
 	echo ''
 endfunction
