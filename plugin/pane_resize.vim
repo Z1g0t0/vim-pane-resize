@@ -82,14 +82,13 @@ function! s:SaveSession() abort
 endfunction
 
 function! s:RefreshHighlight() abort
-	" Session source with eventignore skips FileType/Syntax autocommands.
 	if exists('g:syntax_on') && g:syntax_on
 		silent! syntax enable
 	endif
 	let cur = win_getid()
 	for w in range(1, winnr('$'))
-		let id = win_getid(w)
-		call win_execute(id, 'if !empty(&filetype) | silent! doautocmd <nomodeline> FileType | endif')
+		call win_execute(win_getid(w),
+			\ 'if !empty(&filetype) | silent! doautocmd <nomodeline> FileType | endif')
 	endfor
 	call win_gotoid(cur)
 endfunction
@@ -116,7 +115,6 @@ function! s:LayoutSig() abort
 	return string(winlayout())
 endfunction
 
-" Keep the command-line from being eaten by a greedy :resize.
 function! s:FixCmdline(cmdheight) abort
 	if &cmdheight != a:cmdheight
 		let &cmdheight = a:cmdheight
@@ -124,80 +122,191 @@ function! s:FixCmdline(cmdheight) abort
 endfunction
 
 function! s:UsableHeight() abort
-	let tab = 0
-	if &showtabline == 2 || (&showtabline == 1 && tabpagenr('$') > 1)
-		let tab = 1
-	endif
+	let tab = (&showtabline == 2 || (&showtabline == 1 && tabpagenr('$') > 1)) ? 1 : 0
 	let stl = (&laststatus == 0) ? 0 : 1
 	return max([1, &lines - &cmdheight - stl - tab])
 endfunction
 
+" ── Neighbours by screen position (no wincmd / winwidth tricks) ───────
+function! s:Overlaps(a1, a2, b1, b2) abort
+	return a:a1 <= a:b2 && a:b1 <= a:a2
+endfunction
+
+function! s:WinLeft() abort
+	let pos = win_screenpos(0)
+	let top = pos[0]
+	let bot = pos[0] + winheight(0) - 1
+	let left = pos[1]
+	if left <= 1
+		return 0
+	endif
+	let cur = winnr()
+	for w in range(1, winnr('$'))
+		if w == cur | continue | endif
+		let p = win_screenpos(w)
+		let r = p[1] + winwidth(w) - 1
+		let t = p[0]
+		let b = p[0] + winheight(w) - 1
+		if r < left && r >= left - 2 && s:Overlaps(top, bot, t, b)
+			return w
+		endif
+	endfor
+	return 0
+endfunction
+
+function! s:WinRight() abort
+	let pos = win_screenpos(0)
+	let top = pos[0]
+	let bot = pos[0] + winheight(0) - 1
+	let right = pos[1] + winwidth(0) - 1
+	if right >= &columns
+		return 0
+	endif
+	let cur = winnr()
+	for w in range(1, winnr('$'))
+		if w == cur | continue | endif
+		let p = win_screenpos(w)
+		let t = p[0]
+		let b = p[0] + winheight(w) - 1
+		if p[1] > right && p[1] <= right + 2 && s:Overlaps(top, bot, t, b)
+			return w
+		endif
+	endfor
+	return 0
+endfunction
+
+function! s:WinAbove() abort
+	let pos = win_screenpos(0)
+	let left = pos[1]
+	let right = pos[1] + winwidth(0) - 1
+	let top = pos[0]
+	if top <= 1
+		return 0
+	endif
+	let cur = winnr()
+	for w in range(1, winnr('$'))
+		if w == cur | continue | endif
+		let p = win_screenpos(w)
+		let b = p[0] + winheight(w) - 1
+		let l = p[1]
+		let r = p[1] + winwidth(w) - 1
+		if b < top && b >= top - 3 && s:Overlaps(left, right, l, r)
+			return w
+		endif
+	endfor
+	return 0
+endfunction
+
+function! s:WinBelow() abort
+	let pos = win_screenpos(0)
+	let left = pos[1]
+	let right = pos[1] + winwidth(0) - 1
+	let bot = pos[0] + winheight(0) - 1
+	let cur = winnr()
+	for w in range(1, winnr('$'))
+		if w == cur | continue | endif
+		let p = win_screenpos(w)
+		let l = p[1]
+		let r = p[1] + winwidth(w) - 1
+		if p[0] > bot && p[0] <= bot + 3 && s:Overlaps(left, right, l, r)
+			return w
+		endif
+	endfor
+	return 0
+endfunction
+
 " ── Incremental resize ────────────────────────────────────────────────
-" Move the actual split under the cursor, never :resize +/- (that always
-" prefers the right/bottom border, so top-left looked "right-edged").
-"
-" H = grow left   L = grow right   J = grow down   K = grow up
-function! s:Neighbor(dir) abort
-	" 'winwidth' defaults to 20; without lowering it, winnr('l') can
-	" report "no neighbour" and we invert the wrong way on top-left.
-	let ww = &winwidth
-	let wh = &winheight
-	try
-		set winwidth=1 winheight=1
-		return winnr(a:dir)
-	finally
-		let &winwidth = ww
-		let &winheight = wh
-	endtry
-endfunction
-
+" H/L = width of THIS window, J/K = height of THIS window.
+" Grab the left split if there is one, else the right split.
+" Grab the bottom split if there is one, else the top split.
 function! s:IncResize(dir, amount) abort
-	if exists('*win_move_separator') && exists('*win_move_statusline')
-		call s:IncResizeMove(a:dir, a:amount)
-	else
-		call s:IncResizeLegacy(a:dir, a:amount)
-	endif
-endfunction
-
-function! s:IncResizeMove(dir, amount) abort
-	let cur = winnr()
-	if a:dir ==# 'l'
-		if s:Neighbor('l') != cur
-			call win_move_separator(cur, a:amount)
-		endif
-	elseif a:dir ==# 'h'
-		let left = s:Neighbor('h')
-		if left != cur
-			call win_move_separator(left, -a:amount)
-		endif
+	if a:dir ==# 'h'
+		call s:ChangeWidth(a:amount)
+	elseif a:dir ==# 'l'
+		call s:ChangeWidth(-a:amount)
 	elseif a:dir ==# 'j'
-		if s:Neighbor('j') != cur
-			call win_move_statusline(cur, a:amount)
-		endif
+		call s:ChangeHeight(a:amount)
 	elseif a:dir ==# 'k'
-		let up = s:Neighbor('k')
-		if up != cur
-			call win_move_statusline(up, -a:amount)
+		call s:ChangeHeight(-a:amount)
+	endif
+endfunction
+
+function! s:ChangeWidth(delta) abort
+	if a:delta == 0
+		return
+	endif
+	let minw = max([1, &winminwidth])
+	if a:delta < 0 && winwidth(0) + a:delta < minw
+		let delta = minw - winwidth(0)
+		if delta == 0
+			return
 		endif
-	endif
-endfunction
-
-function! s:IncResizeLegacy(dir, amount) abort
-	let cur = winnr()
-	let on_left   = s:Neighbor('h') == cur
-	let on_right  = s:Neighbor('l') == cur
-	let on_top    = s:Neighbor('k') == cur
-	let on_bottom = s:Neighbor('j') == cur
-	let hs = (on_right && !on_left) ? {'h': '+', 'l': '-'} : {'h': '-', 'l': '+'}
-	let vs = (on_bottom && !on_top) ? {'k': '+', 'j': '-'} : {'k': '-', 'j': '+'}
-	if a:dir ==# 'h' || a:dir ==# 'l'
-		execute 'vertical resize ' . hs[a:dir] . a:amount
 	else
-		execute 'resize ' . vs[a:dir] . a:amount
+		let delta = a:delta
+	endif
+
+	let cur  = winnr()
+	let left = s:WinLeft()
+	let right = s:WinRight()
+
+	if exists('*win_move_separator')
+		if left
+			" preferred: move LEFT border (separator of the window to our left)
+			call win_move_separator(left, -delta)
+		elseif right
+			" on the left edge of the screen: move RIGHT border
+			call win_move_separator(cur, delta)
+		endif
+		return
+	endif
+
+	if left
+		execute left . 'wincmd w'
+		execute 'vertical resize' max([minw, winwidth(0) - delta])
+		execute cur . 'wincmd w'
+	elseif right
+		execute 'vertical resize' max([minw, winwidth(0) + delta])
 	endif
 endfunction
 
-" Back-compat: old maps called <SID>Resize() with 0 args, or (dir, amount).
+function! s:ChangeHeight(delta) abort
+	if a:delta == 0
+		return
+	endif
+	let minh = max([1, &winminheight])
+	if a:delta < 0 && winheight(0) + a:delta < minh
+		let delta = minh - winheight(0)
+		if delta == 0
+			return
+		endif
+	else
+		let delta = a:delta
+	endif
+
+	let cur   = winnr()
+	let below = s:WinBelow()
+	let above = s:WinAbove()
+
+	if exists('*win_move_statusline')
+		if below
+			" preferred: move BOTTOM border
+			call win_move_statusline(cur, delta)
+		elseif above
+			" on the bottom edge of the screen: move TOP border
+			call win_move_statusline(above, -delta)
+		endif
+		return
+	endif
+
+	if below
+		execute 'resize' max([minh, winheight(0) + delta])
+	elseif above
+		execute above . 'wincmd w'
+		execute 'resize' max([minh, winheight(0) - delta])
+		execute cur . 'wincmd w'
+	endif
+endfunction
+
 function! s:Resize(...) abort
 	if a:0 >= 2
 		call s:IncResize(a:1, a:2)
@@ -234,9 +343,13 @@ function! s:Main() abort
 	let l:hlsearch    = &hlsearch
 	let l:cmdheight   = max([1, &cmdheight])
 	let l:ea          = &equalalways
+	let l:ww          = &winwidth
+	let l:wh          = &winheight
 
 	set nohlsearch
 	set noequalalways
+	" Stop Vim forcing the current window to 20x1 while we work.
+	set winwidth=1 winheight=1
 
 	while 1
 		call s:FixCmdline(l:cmdheight)
@@ -303,6 +416,8 @@ function! s:Main() abort
 	endif
 	let &hlsearch = l:hlsearch
 	let &equalalways = l:ea
+	let &winwidth = l:ww
+	let &winheight = l:wh
 	call s:FixCmdline(l:cmdheight)
 	redraw!
 	echo ''
