@@ -1,3 +1,6 @@
+" pane_resize.vim — modal window resize / move / split
+" Re-source is safe. Enter via :PaneResize or the start key.
+
 if exists('g:resize_enter_mapped') && !empty(g:resize_enter_mapped)
 	silent! execute 'nunmap' g:resize_enter_mapped
 endif
@@ -130,18 +133,67 @@ function! s:UsableHeight() abort
 endfunction
 
 " ── Incremental resize ────────────────────────────────────────────────
-" ALWAYS resize the current window. Never wincmd to a neighbour — that is
-" what made a different pane change size.
-"   H = narrower   L = wider   J = taller   K = shorter
+" Move the actual split under the cursor, never :resize +/- (that always
+" prefers the right/bottom border, so top-left looked "right-edged").
+"
+" H = grow left   L = grow right   J = grow down   K = grow up
+function! s:Neighbor(dir) abort
+	" 'winwidth' defaults to 20; without lowering it, winnr('l') can
+	" report "no neighbour" and we invert the wrong way on top-left.
+	let ww = &winwidth
+	let wh = &winheight
+	try
+		set winwidth=1 winheight=1
+		return winnr(a:dir)
+	finally
+		let &winwidth = ww
+		let &winheight = wh
+	endtry
+endfunction
+
 function! s:IncResize(dir, amount) abort
-	if a:dir ==# 'h'
-		execute 'vertical resize -' . a:amount
-	elseif a:dir ==# 'l'
-		execute 'vertical resize +' . a:amount
+	if exists('*win_move_separator') && exists('*win_move_statusline')
+		call s:IncResizeMove(a:dir, a:amount)
+	else
+		call s:IncResizeLegacy(a:dir, a:amount)
+	endif
+endfunction
+
+function! s:IncResizeMove(dir, amount) abort
+	let cur = winnr()
+	if a:dir ==# 'l'
+		if s:Neighbor('l') != cur
+			call win_move_separator(cur, a:amount)
+		endif
+	elseif a:dir ==# 'h'
+		let left = s:Neighbor('h')
+		if left != cur
+			call win_move_separator(left, -a:amount)
+		endif
 	elseif a:dir ==# 'j'
-		execute 'resize +' . a:amount
+		if s:Neighbor('j') != cur
+			call win_move_statusline(cur, a:amount)
+		endif
 	elseif a:dir ==# 'k'
-		execute 'resize -' . a:amount
+		let up = s:Neighbor('k')
+		if up != cur
+			call win_move_statusline(up, -a:amount)
+		endif
+	endif
+endfunction
+
+function! s:IncResizeLegacy(dir, amount) abort
+	let cur = winnr()
+	let on_left   = s:Neighbor('h') == cur
+	let on_right  = s:Neighbor('l') == cur
+	let on_top    = s:Neighbor('k') == cur
+	let on_bottom = s:Neighbor('j') == cur
+	let hs = (on_right && !on_left) ? {'h': '+', 'l': '-'} : {'h': '-', 'l': '+'}
+	let vs = (on_bottom && !on_top) ? {'k': '+', 'j': '-'} : {'k': '-', 'j': '+'}
+	if a:dir ==# 'h' || a:dir ==# 'l'
+		execute 'vertical resize ' . hs[a:dir] . a:amount
+	else
+		execute 'resize ' . vs[a:dir] . a:amount
 	endif
 endfunction
 
@@ -190,7 +242,7 @@ function! s:Main() abort
 		call s:FixCmdline(l:cmdheight)
 		redraw!
 		echohl ModeMsg
-		echo ' <-RESIZE-MODE-> [Enter/Esc] '
+		echo '<-RESIZE-MODE-> : [Enter/Esc] '
 		echohl None
 
 		let c = getchar()
