@@ -5,76 +5,107 @@ let g:pane_resize = 1
 
 " ── User configuration ────────────────────────────────────────────────
 let g:resize_enter = get(g:, 'resize_enter', '<C-r>')
-
-let g:resize_keys = get(g:, 'resize_keys', {
-	\ 'focus_left'    	: 'h',
-	\ 'focus_down'    	: 'j',
-	\ 'focus_up'      	: 'k',
-	\ 'focus_right'   	: 'l',
-	\ 'inc_left'        : '<C-h>',
-	\ 'inc_down'        : '<C-j>',
-	\ 'inc_up'          : '<C-k>',
-	\ 'inc_right'       : '<C-l>',
-	\ 'conquer_left'  	: 'H',
-	\ 'conquer_down'  	: 'J',
-	\ 'conquer_up'    	: 'K',
-	\ 'conquer_right' 	: 'L',
-	\ 'fair_share'		: '=',
-	\ 'confirm'        	: '<CR>',
-	\ 'cancel'        	: 'q',
-	\ 'escape'    		: '<Esc>',
-	\ })
-
 let g:resize_width  = get(g:, 'resize_width',  1)
 let g:resize_height = get(g:, 'resize_height', 1)
-let g:resize_leave  = get(g:, 'resize_leave',  1)   " honour <Esc> as cancel
+let g:resize_leave  = get(g:, 'resize_leave',  1)
 
-" ── Internal helpers ──────────────────────────────────────────────────
-" Convert a Vim key notation to the value getchar() actually returns.
+let s:default_keys = {
+	\ 'focus_left'    : 'h',
+	\ 'focus_down'    : 'j',
+	\ 'focus_up'      : 'k',
+	\ 'focus_right'   : 'l',
+	\ 'inc_left'      : 'H',
+	\ 'inc_down'      : 'J',
+	\ 'inc_up'        : 'K',
+	\ 'inc_right'     : 'L',
+	\ 'conquer_left'  : '<C-h>',
+	\ 'conquer_down'  : '<C-j>',
+	\ 'conquer_up'    : '<C-k>',
+	\ 'conquer_right' : '<C-l>',
+	\ 'split_h'       : '_',
+	\ 'split_v'       : '|',
+	\ 'fair_share'    : '=',
+	\ 'confirm'       : '<CR>',
+	\ 'cancel'        : '<Esc>',
+	\ }
+let g:resize_keys = extend(copy(s:default_keys), get(g:, 'resize_keys', {}))
+
+" ── Key translation ───────────────────────────────────────────────────
+" getchar() returns a Number for single-byte keys and a String for
+" special keys. Dictionary keys are always strings, so we stringify.
 function! s:Key2Char(key) abort
-	" Prefer getcharstr() path when available (Vim 8.2.2957+ / Neovim)
-	if exists('*getcharstr')
-		" Create a temporary mapping so we can read the raw character
-		execute 'nnoremap <silent> <Plug>(PaneResizeTmp) ' . a:key
-		let char = ''
+	if type(a:key) == type(0)
+		return string(a:key)
 	endif
-
-	" Classic numeric / string table (works everywhere)
-	let map = {
-		\ 'h'     : 104,
-		\ 'j'     : 106,
-		\ 'k'     : 107,
-		\ 'l'     : 108,
-		\ 'H'     : 72,
-		\ 'J'     : 74,
-		\ 'K'     : 75,
-		\ 'L'     : 76,
-		\ '='     : 61,
-		\ '_'     : 95,
-		\ '|'     : 124,
-		\ 'q'     : 113,
-		\ '<CR>'  : 13,
-		\ '<Esc>' : 27,
-		\ '<C-h>' : 8,
-		\ '<C-j>' : 10,
-		\ '<C-k>' : 11,
-		\ '<C-l>' : 12,
-		\ }
-
-	return get(map, a:key, a:key)
+	let key = a:key
+	if key =~# '^<.*>$'
+		try
+			let raw = eval('"' . '\' . key . '"')
+		catch
+			return key
+		endtry
+		if strlen(raw) == 1
+			return string(char2nr(raw))
+		endif
+		return raw
+	endif
+	if strlen(key) == 1
+		return string(char2nr(key))
+	endif
+	return key
 endfunction
 
-" Build the reverse lookup once
 function! s:BuildKeymap() abort
 	let s:keymap = {}
 	for [action, key] in items(g:resize_keys)
-		let char = s:Key2Char(key)
-		let s:keymap[char] = action
+		let s:keymap[s:Key2Char(key)] = action
 	endfor
 endfunction
 
 call s:BuildKeymap()
 
+function! s:CharKey(c) abort
+	return type(a:c) == type(0) ? string(a:c) : a:c
+endfunction
+
+" ── Layout snapshot ───────────────────────────────────────────────────
+" winrestcmd() only restores SIZES of the current layout. Conquer (wincmd
+" H/J/K/L) and split change the layout *tree*, so we also keep a session
+" of the current tab and use it whenever the tree changed.
+function! s:SaveSession() abort
+	let tmp = tempname() . '.vim'
+	let save = &sessionoptions
+	try
+		set sessionoptions=blank,buffers,help,winsize,resize
+		execute 'mksession!' fnameescape(tmp)
+	finally
+		let &sessionoptions = save
+	endtry
+	return tmp
+endfunction
+
+function! s:RestoreSession(file) abort
+	if empty(a:file) || !filereadable(a:file)
+		return
+	endif
+	let hide = &hidden
+	let ei = &eventignore
+	try
+		set hidden
+		set eventignore=all
+		silent! execute 'source' fnameescape(a:file)
+	finally
+		let &hidden = hide
+		let &eventignore = ei
+		call delete(a:file)
+	endtry
+endfunction
+
+function! s:LayoutSig() abort
+	return string(winlayout())
+endfunction
+
+" ── Incremental resize (edge-aware so j/k h/l feel consistent) ────────
 function! s:IsEdge(dir) abort
 	let cur = winnr()
 	noautocmd execute 'wincmd' a:dir
@@ -85,7 +116,7 @@ function! s:IsEdge(dir) abort
 	return edge
 endfunction
 
-function! s:DoResize(dir, amount) abort
+function! s:Resize(dir, amount) abort
 	let actions = {
 		\ 'h': 'vertical resize -',
 		\ 'j': 'resize +',
@@ -93,7 +124,6 @@ function! s:DoResize(dir, amount) abort
 		\ 'l': 'vertical resize +'
 		\ }
 	let opposites = {'h': 'l', 'j': 'k', 'k': 'j', 'l': 'h'}
-
 	if (a:dir ==# 'j' || a:dir ==# 'l') && s:IsEdge(a:dir)
 		let opp = opposites[a:dir]
 		let cur = winnr()
@@ -111,54 +141,68 @@ function! s:DoResize(dir, amount) abort
 endfunction
 
 function! s:Conquer(dir) abort
-	if winnr('$') == 1 | return | endif
+	if winnr('$') == 1
+		return
+	endif
 	execute 'wincmd' a:dir
-
 	if a:dir ==# 'H' || a:dir ==# 'L'
 		let target = max([1, &columns / 2])
 		execute 'vertical resize' target
 	else
 		let usable = &lines - &cmdheight
-					\ - (&laststatus  ? 1 : 0)
+					\ - (&laststatus ? 1 : 0)
 					\ - (&showtabline ? 1 : 0)
 		let target = max([1, usable / 2])
 		execute 'resize' target
 	endif
 endfunction
 
+" ── Mode ──────────────────────────────────────────────────────────────
 function! s:Main() abort
 	if winnr('$') == 1
 		echo '[PaneResize]: Only one window.'
 		return
 	endif
 
-	let l:restore  = winrestcmd()
-	let l:hlsearch = &hlsearch
+	call s:BuildKeymap()
+
+	let l:restore_cmd = winrestcmd()
+	let l:restore_sig = s:LayoutSig()
+	let l:restore_win = win_getid()
+	let l:session     = s:SaveSession()
+	let l:hlsearch    = &hlsearch
 	set nohlsearch
 
 	while 1
 		redraw!
 		echohl ModeMsg
-		echo '<-RESIZE-MODE-ON->'
+		echo '<-RESIZE-MODE-ON-> : [Enter/Esc] '
 		echohl None
 
 		let c = getchar()
-		let action = get(s:keymap, c, '')
+		let action = get(s:keymap, s:CharKey(c), '')
 
-		if action ==# 'finish'
+		if action ==# 'confirm'
 			break
-		elseif action ==# 'cancel' || (action ==# 'cancel_esc' && g:resize_leave)
-			execute l:restore
+
+		elseif (action ==# 'cancel' && g:resize_leave)
+			if s:LayoutSig() ==# l:restore_sig
+				execute l:restore_cmd
+				call win_gotoid(l:restore_win)
+			else
+				call s:RestoreSession(l:session)
+				let l:session = ''
+			endif
 			break
 
 		elseif action ==# 'inc_left'
-			call s:DoResize('h', g:resize_width)
+			call s:Resize('h', g:resize_width)
 		elseif action ==# 'inc_right'
-			call s:DoResize('l', g:resize_width)
+			call s:Resize('l', g:resize_width)
 		elseif action ==# 'inc_down'
-			call s:DoResize('j', g:resize_height)
+			call s:Resize('j', g:resize_height)
 		elseif action ==# 'inc_up'
-			call s:DoResize('k', g:resize_height)
+			call s:Resize('k', g:resize_height)
 
 		elseif action ==# 'conquer_left'
 			call s:Conquer('H')
@@ -178,15 +222,19 @@ function! s:Main() abort
 		elseif action ==# 'focus_right'
 			wincmd l
 
-		elseif action ==# 'equal'
+		elseif action ==# 'fair_share'
 			wincmd =
-		elseif action ==# 'max_height'
-			wincmd _
-		elseif action ==# 'max_width'
-			wincmd |
+
+		elseif action ==# 'split_h'
+			split
+		elseif action ==# 'split_v'
+			vsplit
 		endif
 	endwhile
 
+	if !empty(l:session) && filereadable(l:session)
+		call delete(l:session)
+	endif
 	let &hlsearch = l:hlsearch
 	redraw!
 	echo ''
@@ -194,6 +242,6 @@ function! s:Main() abort
 endfunction
 
 if !empty(g:resize_enter)
-	execute 'nnoremap' g:resize_enter ':call <SID>Resize()<CR>'
+	execute 'nnoremap <silent>' g:resize_enter ':call <SID>Main()<CR>'
 endif
-command! Resize call s:Resize()
+command! -bar PaneResize call s:Main()
