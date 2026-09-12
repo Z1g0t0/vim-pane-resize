@@ -1,87 +1,70 @@
-if exists('g:loaded_pane_resize')
-    finish
+if exists('g:pane_resize')
+	finish
 endif
-let g:loaded_pane_resize = 1
+let g:pane_resize = 1
 
-function! s:IsEdge(dir) abort
-    let cur = winnr()
-    noautocmd exec 'wincmd' a:dir
-    let edge = (cur == winnr())
-    if !edge | noautocmd exec cur 'wincmd w' | endif
-    return edge
-endfunction
+" Configurable keys (change these in your vimrc if you want)
+let g:resize_enter 	= get(g:, 'resize_enter',	'<C-e>')
+let g:resize_width 	= get(g:, 'resize_width',	5)   	" columns
+let g:resize_height = get(g:, 'resize_height',	2)		" lines
+let g:resize_leave 	= get(g:, 'resize_leave',  	1)   	" 1 = Esc also finishes
 
-function! s:Resize(dir, amount) abort
-    let actions = {
-        \ 'h': 'vertical resize -',
-        \ 'j': 'resize +',
-        \ 'k': 'resize -',
-        \ 'l': 'vertical resize +'
-        \ }
-    let opposites = {'h': 'l', 'j': 'k', 'k': 'j', 'l': 'h'}
-
-    if (a:dir ==# 'j' || a:dir ==# 'l') && s:IsEdge(a:dir)
-        let opp = opposites[a:dir]
-        let cur = winnr()
-        noautocmd exec 'wincmd' opp
-        exec actions[a:dir] . a:amount
-        noautocmd exec cur 'wincmd w'
-    elseif (a:dir ==# 'h' || a:dir ==# 'k') && s:IsEdge(opposites[a:dir])
-        let cur = winnr()
-        noautocmd exec 'wincmd' a:dir
-        exec actions[a:dir] . a:amount
-        noautocmd exec cur 'wincmd w'
-    else
-        exec actions[a:dir] . a:amount
-    endif
-
-    " Keep cmdheight sane (optional)
-    if &cmdheight != 1
-        let &cmdheight = 1
-    endif
-endfunction
-
-function! s:Conquer(dir) abort
-    if winnr('$') == 1
-        return
-    endif
-
-    noautocmd exec 'wincmd ' . a:dir
-
-    if a:dir ==# 'H' || a:dir ==# 'L'
-        let target = max([1, &columns / 2])
-        exec 'vertical resize ' . target
-    elseif a:dir ==# 'J' || a:dir ==# 'K'
-        " Usable height = total lines minus UI chrome
-        let usable = &lines - &cmdheight
-                    \ - (&laststatus  ? 1 : 0)
-                    \ - (&showtabline ? 1 : 0)
-        let target = max([1, usable / 2])
-        exec 'resize ' . target
-    endif
-endfunction
-
-" Plug definitions
-nnoremap <silent> <Plug>(ResizeLeft)    :call <SID>Resize('h', 1)<CR>
-nnoremap <silent> <Plug>(ResizeDown)    :call <SID>Resize('j', 1)<CR>
-nnoremap <silent> <Plug>(ResizeUp)      :call <SID>Resize('k', 1)<CR>
-nnoremap <silent> <Plug>(ResizeRight)   :call <SID>Resize('l', 1)<CR>
-
-nnoremap <silent> <Plug>(ConquerLeft)   <Cmd>call <SID>Conquer('H')<CR>
-nnoremap <silent> <Plug>(ConquerBottom) <Cmd>call <SID>Conquer('J')<CR>
-nnoremap <silent> <Plug>(ConquerTop)    <Cmd>call <SID>Conquer('K')<CR>
-nnoremap <silent> <Plug>(ConquerRight)  <Cmd>call <SID>Conquer('L')<CR>
-
-nnoremap <silent> <Plug>(FairShare)     <Cmd>wincmd =<CR>
-
-if !get(g:, 'pane_resize_disable_defaults', 0)
-    nmap <silent> <M-h> <Plug>(ResizeLeft)
-    nmap <silent> <M-j> <Plug>(ResizeDown)
-    nmap <silent> <M-k> <Plug>(ResizeUp)
-    nmap <silent> <M-l> <Plug>(ResizeRight)
-    nmap <silent> <M-H> <Plug>(ConquerLeft)
-    nmap <silent> <M-J> <Plug>(ConquerBottom)
-    nmap <silent> <M-K> <Plug>(ConquerTop)
-    nmap <silent> <M-L> <Plug>(ConquerRight)
-    nmap <silent> <M-=> <Plug>(FairShare)
+" Start mapping
+if !empty(g:resize_enter)
+	execute 'nnoremap' g:resize_enter ':call <SID>Resize()<CR>'
 endif
+
+command! Resize call s:Resize()
+
+function! s:Resize() abort
+	if winnr('$') == 1
+		echo 'Only one window – nothing to resize'
+		return
+	endif
+
+	" Capture the exact restore command *now*
+	let l:restore = winrestcmd()
+	let l:hlsearch = &hlsearch
+	set nohlsearch
+
+	echo '[resize mode]  h/j/k/l = resize   = = equalise   Enter = keep   q/Esc = cancel'
+
+	while 1
+		let c = getchar()
+
+		" Finish (keep current sizes)
+		if c == 13                                   " <CR>
+			break
+
+		" Cancel (restore original layout)
+		elseif c == 113                              " q
+					\ || (g:resize_leave && c == 27)  " Esc
+			execute l:restore
+			break
+
+		" Resize
+		elseif c == 104                              " h
+			execute 'vertical resize -' . g:resize_width
+		elseif c == 108                              " l
+			execute 'vertical resize +' . g:resize_width
+		elseif c == 106                              " j
+			execute 'resize +' . g:resize_height
+		elseif c == 107                              " k
+			execute 'resize -' . g:resize_height
+
+		" Optional extras
+		elseif c == 61                               " =
+			wincmd =
+		elseif c == 95                               " _
+			wincmd _
+		elseif c == 124                              " |
+			wincmd |
+		endif
+
+		" Re-echo the prompt so the message stays visible
+		echo '[resize mode]  h/j/k/l = resize   = = equalise   Enter = keep   q/Esc = cancel'
+	endwhile
+
+	let &hlsearch = l:hlsearch
+	echo ''
+endfunction
