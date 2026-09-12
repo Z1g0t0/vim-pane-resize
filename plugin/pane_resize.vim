@@ -38,10 +38,9 @@ function! s:Conquer(dir) abort
 	endif
 endfunction
 
-" ── main modal loop ────────────────────────────────────────────────────
 function! s:Resize() abort
 	if winnr('$') == 1
-		echo 'Only one window – nothing to resize'
+		echo 'PaneResize: Only one window – nothing to resize'
 		return
 	endif
 
@@ -52,15 +51,15 @@ function! s:Resize() abort
 	while 1
 		redraw!
 		echohl ModeMsg
-		echo '[<-RESIZE-MODE-ON->]'
+		echo '<-RESIZE-MODE-ON->'
 		echohl None
 
 		let c = getchar()
 
 		" ── finish / cancel ────────────────────────────────────────
-		if c == 13                                          " <CR> = keep
+		if c == 13                                          " <CR> = Confirm
 			break
-		elseif c == 113 || (g:resize_leave && c == 27)      " q or Esc = restore
+		elseif c == 113 || (g:resize_leave && c == 27)      " q or Esc = Cancel
 			execute l:restore
 			break
 
@@ -74,28 +73,24 @@ function! s:Resize() abort
 		elseif c == 107                                     " k
 			execute 'resize -' . g:resize_height
 
-		" ── conquer (half screen) ──────────────────────────────────
-		elseif c == 72                                      " H
-			call s:Conquer('H')
-		elseif c == 74                                      " J
-			call s:Conquer('J')
-		elseif c == 75                                      " K
-			call s:Conquer('K')
-		elseif c == 76                                      " L
-			call s:Conquer('L')
-
-		" ── change focus (Ctrl-hjkl) ───────────────────────────────
-		" Numeric values that getchar() returns for Ctrl-h/j/k/l
-		elseif c == 8                                       " <C-h>
-			wincmd h
-		elseif c == 10                                      " <C-j>
-			wincmd j
-		elseif c == 11                                      " <C-k>
-			wincmd k
-		elseif c == 12                                      " <C-l>
+		elseif c == 72                                      " <C-h>
+			wincmd h                                               
+		elseif c == 74                                      " <C-j>
+			wincmd j                                               
+		elseif c == 75                                      " <C-k>
+			wincmd k                                               
+		elseif c == 76                                      " <C-l>
 			wincmd l
 
-		" ── extras ─────────────────────────────────────────────────
+		elseif c == 8                                       
+			call s:Conquer('H')
+		elseif c == 10                                      
+			call s:Conquer('J')
+		elseif c == 11                                      
+			call s:Conquer('K')
+		elseif c == 12                                      
+			call s:Conquer('L')
+
 		elseif c == 61                                      " =
 			wincmd =
 		elseif c == 95                                      " _
@@ -105,7 +100,6 @@ function! s:Resize() abort
 		endif
 	endwhile
 
-	" clean exit – prevents “Press ENTER to continue”
 	let &hlsearch = l:hlsearch
 	redraw!
 	echo ''
