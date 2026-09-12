@@ -7,24 +7,22 @@ let g:pane_resize = 1
 let g:resize_enter = get(g:, 'resize_enter', '<C-r>')
 
 let g:resize_keys = get(g:, 'resize_keys', {
-	\ 'inc_left'        : 'h',
-	\ 'inc_down'        : 'j',
-	\ 'inc_up'          : 'k',
-	\ 'inc_right'       : 'l',
-	\ 'conquer_left'  	: '<C-h>',
-	\ 'conquer_down'  	: '<C-j>',
-	\ 'conquer_up'    	: '<C-k>',
-	\ 'conquer_right' 	: '<C-l>',
-	\ 'focus_left'    	: 'H',
-	\ 'focus_down'    	: 'J',
-	\ 'focus_up'      	: 'K',
-	\ 'focus_right'   	: 'L',
+	\ 'focus_left'    	: 'h',
+	\ 'focus_down'    	: 'j',
+	\ 'focus_up'      	: 'k',
+	\ 'focus_right'   	: 'l',
+	\ 'inc_left'        : '<C-h>',
+	\ 'inc_down'        : '<C-j>',
+	\ 'inc_up'          : '<C-k>',
+	\ 'inc_right'       : '<C-l>',
+	\ 'conquer_left'  	: 'H',
+	\ 'conquer_down'  	: 'J',
+	\ 'conquer_up'    	: 'K',
+	\ 'conquer_right' 	: 'L',
 	\ 'fair_share'		: '=',
-	\ 'max_height'    	: '|',
-	\ 'max_width'     	: '_',
-	\ 'finish'        	: '<CR>',
+	\ 'confirm'        	: '<CR>',
 	\ 'cancel'        	: 'q',
-	\ 'cancel_esc'    	: '<Esc>',
+	\ 'escape'    		: '<Esc>',
 	\ })
 
 let g:resize_width  = get(g:, 'resize_width',  1)
@@ -39,8 +37,6 @@ function! s:Key2Char(key) abort
 		" Create a temporary mapping so we can read the raw character
 		execute 'nnoremap <silent> <Plug>(PaneResizeTmp) ' . a:key
 		let char = ''
-		" We use a small trick: feed the key and capture it
-		" (fallback to classic numeric codes for maximum compatibility)
 	endif
 
 	" Classic numeric / string table (works everywhere)
@@ -130,7 +126,7 @@ function! s:Conquer(dir) abort
 	endif
 endfunction
 
-function! s:Resize() abort
+function! s:Main() abort
 	if winnr('$') == 1
 		echo '[PaneResize]: Only one window.'
 		return
