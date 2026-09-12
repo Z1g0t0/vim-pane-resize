@@ -39,7 +39,7 @@ Start with `:PaneResize`(alias `:Resize`) or **`<C-r>`** in normal mode enters r
  - _ : Splits horizontally(`:split`).
  - \| : Splits vertically.(`:vsplit`).
  - C-h/j/k/l : Fills half of the left/bottom/top/right screen.
- - C-= : Balances all panes to the same size.
+ - = : Balances all panes to the same size.
  - [Enter] : Confirms the layout.
  - [Esc] : Cancels the layout(restores the initial layout).
 ---
