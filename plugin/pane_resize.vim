@@ -1,13 +1,4 @@
 " pane_resize.vim — modal window resize / move / split
-" Re-source is safe. Enter via :PaneResize or the start key.
-"
-" Size keys change THIS window:
-"   H wider   L narrower   J taller   K shorter
-" Width  prefers the LEFT split,  or the RIGHT split if you are on the left edge.
-" Height prefers the BOTTOM split, or the TOP split if you are on the bottom edge.
-" After each move we check winwidth()/winheight(); if the size went the wrong
-" way the move is undone and the other bar is tried. That is what keeps H/L
-" and J/K from flipping on edge panes.
 
 if exists('g:resize_enter_mapped') && !empty(g:resize_enter_mapped)
 	silent! execute 'nunmap' g:resize_enter_mapped
@@ -407,15 +398,6 @@ function! s:LegacyMove(horiz, wnr, offset) abort
 	endif
 endfunction
 
-" Old mappings called <SID>Resize() with 0 args, or (dir, amount).
-function! s:Resize(...) abort
-	if a:0 >= 2
-		call s:IncResize(a:1, a:2)
-	else
-		call s:Main()
-	endif
-endfunction
-
 " Move the current window to an edge (wincmd H/J/K/L) and take half the screen.
 function! s:Conquer(dir) abort
 	if winnr('$') == 1
@@ -432,10 +414,9 @@ endfunction
 " -----------------------------------------------------------------------------
 " Mode loop
 " -----------------------------------------------------------------------------
-
 function! s:Main() abort
 	if winnr('$') == 1
-		echo '[PaneResize]: Only one window.'
+		echom '[PaneResize]: Only one window.'
 		return
 	endif
 

@@ -75,6 +75,8 @@ nnoremap <silent> <Leader>r :PaneResize<CR>
 let g:resize_width  = 6   " columns per H/L
 let g:resize_height = 3   " lines per J/K
 ```
+
+### Resize mode bindings
 ```vim
 let g:resize_keys = {
 	\ 'focus_left'    : 'h',
@@ -95,4 +97,8 @@ let g:resize_keys = {
 	\ 'confirm'       : '<CR>',
 	\ 'cancel'        : '<Esc>',
 	\ }
+```
+```vim
+### Resize mode message
+letf g:resize_prompt = 'RESIZE MODE ON!'
 ```
