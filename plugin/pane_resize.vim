@@ -416,7 +416,7 @@ endfunction
 " -----------------------------------------------------------------------------
 function! s:Main() abort
 	if winnr('$') == 1
-		echohl WarningMsg | echo "[PaneResize]: Only one window." | echohl None
+		echohl WarningMsg | echo "[PaneResize]: Only one window!" | echohl None
 		return
 	endif
 
