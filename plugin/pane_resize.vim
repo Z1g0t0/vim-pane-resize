@@ -416,7 +416,7 @@ endfunction
 " -----------------------------------------------------------------------------
 function! s:Main() abort
 	if winnr('$') == 1
-		echom '[PaneResize]: Only one window.'
+		echom '%#ErrorMsg#[PaneResize]: Only one window.'
 		return
 	endif
 
